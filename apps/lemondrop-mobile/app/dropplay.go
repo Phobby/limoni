@@ -539,13 +539,15 @@ func (d *dropPlay) drawPause(c *canvas) {
 // drawPanel is the board frame shader around (x, y, w, h) dp.
 func drawPanel(c *canvas, x, y, w, h, r float64, pulse float32, edge rgb) {
 	pad := 28.0
-	op := &ebiten.DrawRectShaderOptions{}
-	op.Uniforms = map[string]any{
-		"Rect":   []float32{c.px(x), c.px(y), c.px(w), c.px(h)},
-		"Radius": c.px(r),
-		"Pulse":  pulse,
-		"Edge":   []float32{edge.r, edge.g, edge.b},
+	if c.panelUni == nil {
+		c.panelV = [4][]float32{make([]float32, 4), make([]float32, 1), make([]float32, 1), make([]float32, 3)}
+		c.panelUni = map[string]any{"Rect": c.panelV[0], "Radius": c.panelV[1], "Pulse": c.panelV[2], "Edge": c.panelV[3]}
 	}
+	v := &c.panelV
+	v[0][0], v[0][1], v[0][2], v[0][3] = c.px(x), c.px(y), c.px(w), c.px(h)
+	v[1][0], v[2][0] = c.px(r), pulse
+	v[3][0], v[3][1], v[3][2] = edge.r, edge.g, edge.b
+	op := &ebiten.DrawRectShaderOptions{Uniforms: c.panelUni}
 	op.GeoM.Translate(float64(c.px(x-pad)), float64(c.px(y-pad)))
 	c.dst.DrawRectShader(int(c.px(w+2*pad)), int(c.px(h+2*pad)), panelShader, op)
 }

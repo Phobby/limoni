@@ -83,11 +83,7 @@ func (s *sandTex) draw(c *canvas, x, y, g float64, t float64, glow float32) {
 
 // drawBlock is one block of a falling piece: a rounded, lit tile.
 func drawBlock(c *canvas, x, y, size float64, col rgb, a float32) {
-	r := size * 0.2
-	c.round(x+size*0.06, y+size*0.10, size, size, r, rgb{}, 0.30*a)
-	c.round(x, y, size, size, r, col.scale(0.72), a)
-	c.round(x+size*0.06, y+size*0.05, size*0.88, size*0.82, r*0.9, col, a)
-	c.round(x+size*0.14, y+size*0.10, size*0.72, size*0.28, r*0.7, col.lighten(0.45), 0.55*a)
+	c.blit(c.sprite(sprBlock, col, size), x, y, a)
 }
 
 // drawPiece draws a piece's four blocks with its box top-left at (x, y) dp.
@@ -100,8 +96,6 @@ func drawPiece(c *canvas, kind, rot int, col rgb, x, y, block float64, a float32
 // drawGhost outlines where a piece would land.
 func drawGhost(c *canvas, kind, rot int, col rgb, x, y, block float64) {
 	for _, cell := range core.Shapes[kind][rot] {
-		bx, by := x+float64(cell[0])*block, y+float64(cell[1])*block
-		c.round(bx+1, by+1, block-2, block-2, block*0.2, col, 0.12)
-		c.roundStroke(bx+1.5, by+1.5, block-3, block-3, block*0.2, 1.6, col, 0.55)
+		c.blit(c.sprite(sprGhost, col, block), x+float64(cell[0])*block, y+float64(cell[1])*block, 1)
 	}
 }

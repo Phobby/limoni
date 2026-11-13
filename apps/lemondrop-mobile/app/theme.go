@@ -102,6 +102,16 @@ type canvas struct {
 	saved *ebiten.Image
 	s     float32
 	path  vector.Path
+
+	// reused per call so drawing allocates nothing
+	fillOp   vector.FillOptions
+	drawOp   vector.DrawPathOptions
+	strokeOp vector.StrokeOptions
+	textOp   text.DrawOptions
+	imgOp    ebiten.DrawImageOptions
+	sprites  map[spriteKey]*ebiten.Image
+	panelUni map[string]any
+	panelV   [4][]float32
 }
 
 func (c *canvas) px(v float64) float32 { return float32(v) * c.s }
@@ -132,20 +142,83 @@ func (c *canvas) roundPath(x, y, w, h, r float64) *vector.Path {
 }
 
 func (c *canvas) round(x, y, w, h, r float64, col rgb, a float32) {
-	op := &vector.DrawPathOptions{AntiAlias: true, ColorScale: col.cs(a)}
-	vector.FillPath(c.dst, c.roundPath(x, y, w, h, r), &vector.FillOptions{}, op)
+	c.drawOp = vector.DrawPathOptions{AntiAlias: true, ColorScale: col.cs(a)}
+	vector.FillPath(c.dst, c.roundPath(x, y, w, h, r), &c.fillOp, &c.drawOp)
 }
 
 func (c *canvas) roundStroke(x, y, w, h, r, width float64, col rgb, a float32) {
-	op := &vector.DrawPathOptions{AntiAlias: true, ColorScale: col.cs(a)}
-	vector.StrokePath(c.dst, c.roundPath(x, y, w, h, r), &vector.StrokeOptions{Width: c.px(width), LineJoin: vector.LineJoinRound}, op)
+	c.drawOp = vector.DrawPathOptions{AntiAlias: true, ColorScale: col.cs(a)}
+	c.strokeOp = vector.StrokeOptions{Width: c.px(width), LineJoin: vector.LineJoinRound}
+	vector.StrokePath(c.dst, c.roundPath(x, y, w, h, r), &c.strokeOp, &c.drawOp)
+}
+
+// ── sprites: shapes drawn once with vectors, then blitted ────────────────
+
+type spriteKind uint8
+
+const (
+	sprBlock spriteKind = iota
+	sprCell
+	sprGhost
+	sprEmpty
+)
+
+type spriteKey struct {
+	kind spriteKind
+	col  rgb
+	px   int
+}
+
+// sprite returns the cached image of a shape of the given size in dp; the
+// image's origin is the shape's top-left and it has room for a soft shadow.
+func (c *canvas) sprite(kind spriteKind, col rgb, size float64) *ebiten.Image {
+	k := spriteKey{kind, col, int(size*float64(c.s) + 0.5)}
+	if img, ok := c.sprites[k]; ok {
+		return img
+	}
+	if c.sprites == nil || len(c.sprites) > 600 {
+		c.sprites = map[spriteKey]*ebiten.Image{}
+	}
+	n := int(float64(k.px)*1.25) + 4
+	img := ebiten.NewImage(n, n)
+	sc := &canvas{dst: img, s: c.s}
+	switch kind {
+	case sprBlock:
+		r := size * 0.2
+		sc.round(size*0.06, size*0.10, size, size, r, rgb{}, 0.30)
+		sc.round(0, 0, size, size, r, col.scale(0.72), 1)
+		sc.round(size*0.06, size*0.05, size*0.88, size*0.82, r*0.9, col, 1)
+		sc.round(size*0.14, size*0.10, size*0.72, size*0.28, r*0.7, col.lighten(0.45), 0.55)
+	case sprCell:
+		r := size * 0.18
+		sc.round(size*0.06, size*0.06, size*0.88, size*0.88, r, col.scale(0.7), 1)
+		sc.round(size*0.08, size*0.07, size*0.84, size*0.76, r, col, 1)
+		sc.round(size*0.16, size*0.12, size*0.68, size*0.24, r*0.7, col.lighten(0.45), 0.5)
+	case sprGhost:
+		sc.round(1, 1, size-2, size-2, size*0.2, col, 0.12)
+		sc.roundStroke(1.5, 1.5, size-3, size-3, size*0.2, 1.6, col, 0.55)
+	case sprEmpty:
+		sc.round(size*0.08, size*0.08, size*0.84, size*0.84, size*0.16, col, 1)
+	}
+	c.sprites[k] = img
+	return img
+}
+
+// blit draws a sprite with its origin at (x, y) dp, at alpha a.
+func (c *canvas) blit(img *ebiten.Image, x, y float64, a float32) {
+	c.imgOp = ebiten.DrawImageOptions{}
+	c.imgOp.GeoM.Translate(float64(c.px(x)), float64(c.px(y)))
+	c.imgOp.ColorScale.ScaleAlpha(a)
+	c.imgOp.Filter = ebiten.FilterLinear
+	c.dst.DrawImage(img, &c.imgOp)
 }
 
 // text draws s with its anchor at (x, y): align 0 left, 1 centre, 2 right;
 // y is the vertical centre of the line.
 func (c *canvas) text(s string, x, y, size float64, bold bool, col rgb, a float32, align int) {
 	f := face(size*float64(c.s), bold)
-	op := &text.DrawOptions{}
+	c.textOp = text.DrawOptions{}
+	op := &c.textOp
 	op.GeoM.Translate(float64(c.px(x)), float64(c.px(y)))
 	op.ColorScale = col.cs(a)
 	op.PrimaryAlign = text.Align(align)
@@ -156,7 +229,8 @@ func (c *canvas) text(s string, x, y, size float64, bold bool, col rgb, a float3
 // textScaled draws s centred at (x, y) scaled by k around its centre (for pops).
 func (c *canvas) textScaled(s string, x, y, size, k float64, col rgb, a float32) {
 	f := face(size*float64(c.s), true)
-	op := &text.DrawOptions{}
+	c.textOp = text.DrawOptions{}
+	op := &c.textOp
 	op.GeoM.Scale(k, k)
 	op.GeoM.Translate(float64(c.px(x)), float64(c.px(y)))
 	op.ColorScale = col.cs(a)

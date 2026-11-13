@@ -78,6 +78,8 @@ type App struct {
 	uni        map[string]any // reused shader uniforms
 	wasFocused bool
 	setScroll  float64
+	bgV        [4][]float32
+	bgOp       ebiten.DrawRectShaderOptions
 	cv         canvas
 }
 
@@ -282,15 +284,18 @@ func (a *App) drawBackground(dst *ebiten.Image) {
 	if a.scr == scrSplash || a.scr == scrMenu {
 		amt = 0.16
 	}
-	u := a.uni
-	clear(u)
-	u["Time"] = float32(a.t)
-	u["Size"] = []float32{float32(w), float32(h)}
-	u["Lemon"] = []float32{float32(lx), float32(ly), float32(lr)}
-	u["Amount"] = amt
-	u["Top"] = []float32{bgTop.r, bgTop.g, bgTop.b}
-	u["Bottom"] = []float32{bgBottom.r, bgBottom.g, bgBottom.b}
-	dst.DrawRectShader(int(w), int(h), bgShader, &ebiten.DrawRectShaderOptions{Uniforms: u})
+	if len(a.uni) == 0 {
+		a.bgV = [4][]float32{make([]float32, 1), make([]float32, 2), make([]float32, 3), make([]float32, 1)}
+		a.uni["Time"], a.uni["Size"], a.uni["Lemon"], a.uni["Amount"] = a.bgV[0], a.bgV[1], a.bgV[2], a.bgV[3]
+		a.uni["Top"] = []float32{bgTop.r, bgTop.g, bgTop.b}
+		a.uni["Bottom"] = []float32{bgBottom.r, bgBottom.g, bgBottom.b}
+	}
+	a.bgV[0][0] = float32(a.t)
+	a.bgV[1][0], a.bgV[1][1] = float32(w), float32(h)
+	a.bgV[2][0], a.bgV[2][1], a.bgV[2][2] = float32(lx), float32(ly), float32(lr)
+	a.bgV[3][0] = amt
+	a.bgOp.Uniforms = a.uni
+	dst.DrawRectShader(int(w), int(h), bgShader, &a.bgOp)
 }
 
 // ── splash ───────────────────────────────────────────────────────────────

@@ -9,6 +9,8 @@ import (
 	"github.com/thebanri/limoni/apps/lemondrop-mobile/gen"
 )
 
+var emptyCell = hex(0x1d2130)
+
 // zestPlay is the drag-and-place mode.
 type zestPlay struct {
 	a    *App
@@ -226,10 +228,7 @@ func (z *zestPlay) cellXY(i int) (float64, float64) {
 // ── draw ─────────────────────────────────────────────────────────────────
 
 func drawCell(c *canvas, x, y, s float64, col rgb, a float32) {
-	r := s * 0.18
-	c.round(x+s*0.06, y+s*0.06, s*0.88, s*0.88, r, col.scale(0.7), a)
-	c.round(x+s*0.08, y+s*0.07, s*0.84, s*0.76, r, col, a)
-	c.round(x+s*0.16, y+s*0.12, s*0.68, s*0.24, r*0.7, col.lighten(0.45), 0.5*a)
+	c.blit(c.sprite(sprCell, col, s), x, y, a)
 }
 
 func (z *zestPlay) draw(c *canvas) {
@@ -258,7 +257,7 @@ func (z *zestPlay) draw(c *canvas) {
 			drawCell(c, x, y, z.cell, col, 1)
 			continue
 		}
-		c.round(x+z.cell*0.08, y+z.cell*0.08, z.cell*0.84, z.cell*0.84, z.cell*0.16, hex(0x1d2130), 1)
+		c.blit(c.sprite(sprEmpty, emptyCell, z.cell), x, y, 1)
 		if prevMask>>i&1 != 0 {
 			col := fruit[g.Tray[z.drag].Colour]
 			drawCell(c, x, y, z.cell, col, 0.35)
