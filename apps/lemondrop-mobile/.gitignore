@@ -1,0 +1,7 @@
+ios/build/
+ios/LemonDrop.xcodeproj/xcuserdata/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/libs/*.aar
+android/local.properties

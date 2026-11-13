@@ -35,12 +35,11 @@ func (a *App) updateMenus() {
 func (a *App) drawMenus(c *canvas) {
 	// the attract board, dim, behind every menu
 	if a.scr == scrMenu || a.scr == scrModes {
-		_, sy, _, sh := a.safe()
 		// full width at the bottom, faint: a bed of sand under the menu
 		g := a.W / float64(a.attract.GW)
 		h := g * float64(a.attract.GH)
 		a.atex.fill(a.attract, a.t)
-		a.atex.draw(c, 0, sy+sh-h+g*float64(a.attract.GH)*0.25, g, a.t, 0.38)
+		a.atex.draw(c, 0, a.H-h, g, a.t, 0.38)
 	}
 	switch a.scr {
 	case scrMenu:

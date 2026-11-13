@@ -78,7 +78,7 @@ type App struct {
 	uni        map[string]any // reused shader uniforms
 	wasFocused bool
 	setScroll  float64
-	cv  canvas
+	cv         canvas
 }
 
 const (
