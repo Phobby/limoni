@@ -2,14 +2,13 @@
 
 Tick each item on at least one small phone, one large phone and one
 high-refresh device per platform. Status today: iOS simulator smoke-tested
-(menu, Classic, Zest render and run); no physical device yet.
+(menu and game render and run); no physical device yet.
 
 ## Install and lifecycle
 - [ ] Cold start shows the splash, then the menu, in under 2 s
 - [ ] Home / app switcher during a run, then back: the run is paused and nothing is lost
 - [ ] Phone call / Control Center / notification shade during a run: paused, audio resumes after
 - [ ] Kill the app during a run, relaunch: settings and boards are intact
-- [ ] Airplane mode: Classic results say "offline — kept on this device"; no hang
 
 ## Layout
 - [ ] Notch / Dynamic Island / punch-hole: score and pause are never covered
@@ -25,11 +24,11 @@ high-refresh device per platform. Status today: iOS simulator smoke-tested
 - [ ] Buttons layout: ◀ ▶ repeat when held, ⟳ ▼ ⤓ work; left-handed mirrors the order
 - [ ] Clears flash, sand bursts, chain text reads CLEAR / DOUBLE CHAIN / … / LEMON STORM
 
-## Zest Blocks
-- [ ] Dragged piece rides above the finger; snapping is predictable at the board edges
-- [ ] Invalid spot shows red and the piece returns to the tray
-- [ ] Lines that will clear glow before release
-- [ ] Game over appears only when no tray piece fits
+## Dealing feel (the Director)
+- [ ] Colours look random over a few minutes: no colour three times in a row, no colour dominating
+- [ ] Near the top, a helpful colour or shape comes often enough to recover, without it being obvious
+- [ ] After a clear, the next pieces often allow another; chains of 2–3 happen in normal play
+- [ ] On a low, clean board the game does not feel scripted or too easy
 
 ## Feedback
 - [ ] Haptics: light on turn and place, heavy on drop, success on big chains and new best, error on game over; off when disabled
@@ -37,11 +36,11 @@ high-refresh device per platform. Status today: iOS simulator smoke-tested
 - [ ] Reduce motion: no screen shake, far fewer particles
 
 ## Performance (release build, profiler attached)
-- [ ] 60 fps sustained in a 10-minute Classic run; on a 120 Hz device, 120 fps with a smooth piece
+- [ ] 60 fps sustained in a 10-minute run; on a 120 Hz device, 120 fps with a smooth piece
 - [ ] No frame over 33 ms during big chains
 - [ ] Memory stable over 10 minutes (no growth)
 - [ ] Battery and thermal acceptable after 20 minutes
 
-## Leaderboard
-- [ ] Set a name with the native prompt; it appears on the results and the board
-- [ ] A Classic run is accepted by the world board; Fair Drop and Zest never post
+## Scores
+- [ ] Set a name with the native prompt; it appears on the results and the scores screen
+- [ ] A new best shows NEW BEST with confetti and survives an app restart

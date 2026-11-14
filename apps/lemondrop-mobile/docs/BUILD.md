@@ -62,16 +62,15 @@ The shell (`MainActivity.kt`):
 - maps haptics to `performHapticFeedback`, which needs no permission;
 - asks for the player's name with an `AlertDialog`.
 
-## Leaderboards
-- Classic runs go to `https://limoni-drab.vercel.app/drop/scores`, the same
-  board and protocol as the terminal game. Turn this off in Settings.
-- Fair Drop and Zest Blocks keep local boards: their rules differ, and the
-  server has no endpoint for them. To add one, give `apps/scoreboard` a new
-  board, for example `/zest/scores`, whose `Check` replays the Zest rules from
-  a placement log, and post the log from `finishZest`.
+## Scores
+Runs are kept on the device (top 20). They are not sent to the terminal
+game's shared `/drop/scores` board, because the Director deals differently
+from the classic bag. A future online board for this game would need its own
+endpoint in `apps/scoreboard`; the run log (`core.Sim.ClearLog`, `DropPts`,
+`Pieces`) already holds what such a server needs to recompute the score.
 
 ## Save data and migration
 - `lemondrop-mobile.json` in the data directory, `"version": 1`. Files from a
   newer version are not loaded.
 - On first start on desktop, the terminal game's `limoni/lemondrop.json` (name
-  and board, same scoring) is imported into the Classic board once.
+  and board, same scoring) is imported into the local board once.

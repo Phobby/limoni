@@ -15,15 +15,11 @@ import (
 
 const saveVersion = 1
 
-// Mode identifies a leaderboard. Only Classic shares the terminal game's
-// rules, so only Classic may go to the shared /drop/scores board.
+// Mode keys a board in the save file. There is one mode; the key keeps the
+// format open for more.
 type Mode string
 
-const (
-	ModeClassic Mode = "classic"
-	ModeFair    Mode = "fairdrop"
-	ModeZest    Mode = "zest"
-)
+const modeDrop Mode = "drop"
 
 const boardSize = 20
 
@@ -37,20 +33,17 @@ type entry struct {
 }
 
 type settings struct {
-	SfxVol      float64 `json:"sfxVol"`
-	MusicVol    float64 `json:"musicVol"`
-	Muted       bool    `json:"muted"`
-	Haptics     bool    `json:"haptics"`
-	ReduceMove  bool    `json:"reduceMotion"`
-	Buttons     bool    `json:"buttons"` // on-screen buttons instead of gestures
-	LeftHanded  bool    `json:"leftHanded"`
-	FairProfile string  `json:"fairProfile"`
-	ZestProfile string  `json:"zestProfile"`
-	Online      bool    `json:"online"`
+	SfxVol     float64 `json:"sfxVol"`
+	MusicVol   float64 `json:"musicVol"`
+	Muted      bool    `json:"muted"`
+	Haptics    bool    `json:"haptics"`
+	ReduceMove bool    `json:"reduceMotion"`
+	Buttons    bool    `json:"buttons"` // on-screen buttons instead of gestures
+	LeftHanded bool    `json:"leftHanded"`
 }
 
 func defaultSettings() settings {
-	return settings{SfxVol: 0.9, MusicVol: 0.35, Haptics: true, FairProfile: "Relaxed", ZestProfile: "Standard", Online: true}
+	return settings{SfxVol: 0.9, MusicVol: 0.35, Haptics: true}
 }
 
 type saveFile struct {
@@ -92,7 +85,7 @@ func (s *store) load() {
 	}
 }
 
-// importLegacy reads the terminal game's save (same scoring as Classic).
+// importLegacy reads the terminal game's save (same scoring rules).
 func (s *store) importLegacy() {
 	s.data.Imported = true
 	b, err := os.ReadFile(s.legacy)
@@ -111,7 +104,7 @@ func (s *store) importLegacy() {
 	}
 	for _, e := range old.Board {
 		e.Name = cleanName(e.Name)
-		s.add(ModeClassic, e)
+		s.add(e)
 	}
 	s.save()
 }
@@ -131,8 +124,9 @@ func (s *store) save() {
 	}
 }
 
-// add puts e on a mode's board and returns its place (1-based) or 0.
-func (s *store) add(m Mode, e entry) int {
+// add puts e on the board and returns its place (1-based) or 0.
+func (s *store) add(e entry) int {
+	m := modeDrop
 	b := append(s.data.Boards[m], e)
 	sort.SliceStable(b, func(i, j int) bool { return b[i].Score > b[j].Score })
 	rank := 0
@@ -152,14 +146,16 @@ func (s *store) add(m Mode, e entry) int {
 	return rank
 }
 
-func (s *store) best(m Mode) int {
-	if b := s.data.Boards[m]; len(b) > 0 {
+func (s *store) board() []entry { return s.data.Boards[modeDrop] }
+
+func (s *store) best() int {
+	if b := s.board(); len(b) > 0 {
 		return b[0].Score
 	}
 	return 0
 }
 
-// cleanName keeps what the shared leaderboard accepts (as apps/lemondrop).
+// cleanName keeps what the terminal game's leaderboard accepts (apps/lemondrop).
 func cleanName(in string) string {
 	const nameMax = 12
 	var b strings.Builder

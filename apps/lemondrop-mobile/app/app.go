@@ -1,6 +1,6 @@
 // Package app is Lemon Drop Mobile's Ebitengine frontend: screens, layout,
 // touch input, GPU rendering, particles, sound and haptics. The rules live in
-// core (falling sand) and blocks (Zest Blocks); this package only reads them
+// core (falling sand) and gen (piece dealing); this package only reads them
 // and turns their events into feedback.
 package app
 
@@ -17,9 +17,7 @@ type screen int
 const (
 	scrSplash screen = iota
 	scrMenu
-	scrModes
 	scrDrop
-	scrZest
 	scrSettings
 	scrHelp
 	scrBoard
@@ -29,11 +27,10 @@ const (
 
 // Options configure an App.
 type Options struct {
-	BoardURL string // shared leaderboard; "" uses the default, "off" disables
-	Seed     uint64 // 0: from the clock
-	NoSound  bool
-	StartAt  string  // debug: "menu", "drop", "zest", … (screenshots)
-	Speed    float64 // debug: time multiplier (screenshots); 0 means 1
+	Seed    uint64 // 0: from the clock
+	NoSound bool
+	StartAt string  // debug: "menu", "drop", "settings", … (screenshots)
+	Speed   float64 // debug: time multiplier (screenshots); 0 means 1
 }
 
 // App is the whole game; it implements ebiten.Game.
@@ -58,22 +55,13 @@ type App struct {
 	paused      bool
 
 	drop    *dropPlay
-	zest    *zestPlay
 	attract *core.Sim
 	atex    *sandTex
 
-	remote     *remote
-	world      []entry
-	worldState int // 0 none, 1 loading, 2 ok, 3 offline
-	worldRank  int
-
-	res      result
-	boardTab Mode
-	boardOff float64
-	helpTab  int
-	typing   string
-	nameRet  screen
-	seedN    uint64
+	res     result
+	typing  string
+	nameRet screen
+	seedN   uint64
 
 	uni        map[string]any // reused shader uniforms
 	wasFocused bool
@@ -83,17 +71,10 @@ type App struct {
 	cv         canvas
 }
 
-const (
-	worldNone = iota
-	worldLoading
-	worldOK
-	worldOffline
-)
-
 // New makes the game for a platform.
 func New(p Platform, o Options) *App {
 	loadShaders()
-	a := &App{plat: p, opt: o, fx: newFX(), scr: scrSplash, boardTab: ModeClassic, last: time.Now()}
+	a := &App{plat: p, opt: o, fx: newFX(), scr: scrSplash, last: time.Now()}
 	a.st = newStore(p.DataDir())
 	a.fx.reduce = a.st.data.Settings.ReduceMove
 	if !o.NoSound {
@@ -106,29 +87,12 @@ func New(p Platform, o Options) *App {
 	}
 	a.attract = core.NewSim(a.nextSeed(), core.MaxB)
 	a.atex = newSandTex()
-	url := o.BoardURL
-	if url == "" {
-		url = defaultBoard
-	}
-	if a.st.data.Settings.Online {
-		a.remote = newRemote(url)
-	}
-	if a.remote != nil {
-		a.worldState = worldLoading
-		a.remote.fetch()
-	}
 	a.uni = map[string]any{}
 	switch o.StartAt {
 	case "menu":
 		a.scr = scrMenu
-	case "modes":
-		a.scr = scrModes
 	case "drop":
-		a.startDrop(ModeClassic)
-	case "fair":
-		a.startDrop(ModeFair)
-	case "zest":
-		a.startZest()
+		a.startDrop()
 	case "settings":
 		a.scr = scrSettings
 	case "help":
@@ -183,7 +147,7 @@ func (a *App) TextEntered(s string) {
 
 // Suspend is called by the shells when the app goes to the background.
 func (a *App) Suspend() {
-	if a.scr == scrDrop || a.scr == scrZest {
+	if a.scr == scrDrop {
 		a.paused = true
 	}
 	a.st.save()
@@ -217,10 +181,9 @@ func (a *App) Update() error {
 	a.transT += dt
 	a.in.update(a.t, a.scale, dt)
 	a.fx.update(dt)
-	a.pollRemote()
 	// Pause when the app loses focus (backgrounded), not because it started unfocused.
 	focused := ebiten.IsFocused()
-	if a.wasFocused && !focused && (a.scr == scrDrop || a.scr == scrZest) {
+	if a.opt.Speed == 0 && a.wasFocused && !focused && a.scr == scrDrop { // not in scripted screenshot runs
 		a.paused = true
 		a.st.save()
 	}
@@ -231,13 +194,11 @@ func (a *App) Update() error {
 			a.go_(scrMenu)
 		}
 		a.attract.Update(dt)
-	case scrMenu, scrModes, scrSettings, scrHelp, scrBoard, scrName:
+	case scrMenu, scrSettings, scrHelp, scrBoard, scrName:
 		a.attract.Update(dt)
 		a.updateMenus()
 	case scrDrop:
 		a.drop.update(dt)
-	case scrZest:
-		a.zest.update(dt)
 	case scrOver:
 		a.updateOver(dt)
 	}
@@ -253,8 +214,6 @@ func (a *App) Draw(dst *ebiten.Image) {
 		a.drawSplash(c)
 	case scrDrop:
 		a.drop.draw(c)
-	case scrZest:
-		a.zest.draw(c)
 	case scrOver:
 		a.drawOver(c)
 	default:
@@ -316,28 +275,4 @@ func (a *App) drawSplash(c *canvas) {
 	ta := float32(clamp01((a.t - 0.4) / 0.5))
 	c.text("LEMON DROP", cx, cy+112, 38, true, accent, ta, 1)
 	c.text("falling blocks · living sand", cx, cy+148, 15, false, dimText, ta, 1)
-}
-
-// ── remote ───────────────────────────────────────────────────────────────
-
-func (a *App) pollRemote() {
-	r, ok := a.remote.poll()
-	if !ok {
-		return
-	}
-	if r.err != nil {
-		a.worldState = worldOffline
-		if r.sent {
-			a.worldRank = 0
-		}
-		return
-	}
-	a.worldState = worldOK
-	a.world = r.board
-	for i := range a.world {
-		a.world[i].Name = cleanName(a.world[i].Name)
-	}
-	if r.sent {
-		a.worldRank = r.rank
-	}
 }

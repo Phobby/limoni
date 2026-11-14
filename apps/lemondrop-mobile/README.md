@@ -8,14 +8,15 @@ It runs on Ebitengine, so it is GPU-rendered on iOS (Metal) and Android
 (OpenGL ES). The rules are the terminal game's (`apps/lemondrop`), ported bit
 for bit.
 
-| Mode | Rules | Leaderboard |
-|---|---|---|
-| **Classic Drop** | The original rules and piece bag | World (shared with the terminal game) |
-| **Fair Drop** | Same rules; a board-aware dealer that keeps the 7-bag fair (Relaxed / Balanced) | Local |
-| **Zest Blocks** | Drag three pieces onto an 8×8 board, clear rows and columns (Relaxed / Standard / Challenge) | Local |
+One mode. The rules and scoring are the terminal game's. Pieces are dealt by
+the **Director**, which reads the board and how the run is going: near defeat
+it gives small, believable help; after a clear it feeds chains; on a
+comfortable board it stays out of the way. Colours still look random, and
+every seven pieces still hold each shape once (docs/ALGORITHMS.md). Scores
+are kept on the device.
 
 ```
-go test ./...                        # rules, generators, persistence, gestures, layout
+go test ./...                        # rules, Director, persistence, gestures, layout
 go run ./cmd/lemondrop-mobile        # desktop, phone-shaped window
 scripts/build-ios.sh                 # iOS simulator build
 scripts/build-android.sh             # Android APK (needs the Android SDK/NDK)
@@ -25,9 +26,8 @@ scripts/build-android.sh             # Android APK (needs the Android SDK/NDK)
 
 ```
 core/      falling-sand rules (port of apps/lemondrop/game.go), events, run log
-gen/       Fair Drop and Zest dealers
-blocks/    Zest Blocks rules
-app/       Ebitengine frontend: screens, shaders, particles, audio, haptics, saves, leaderboard
+gen/       the Director: adaptive piece and colour dealing
+app/       Ebitengine frontend: screens, shaders, particles, audio, haptics, saves, scores
 mobile/    ebitenmobile bind entry and native bridge
 ios/       XcodeGen project + Swift shell
 android/   Gradle project + Kotlin shell

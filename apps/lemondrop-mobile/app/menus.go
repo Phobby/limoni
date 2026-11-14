@@ -4,9 +4,6 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-
-	"github.com/thebanri/limoni/apps/lemondrop-mobile/core"
-	"github.com/thebanri/limoni/apps/lemondrop-mobile/gen"
 )
 
 // Menus are immediate-mode: one function per screen lays out, hit-tests
@@ -16,8 +13,6 @@ func (a *App) updateMenus() {
 	switch a.scr {
 	case scrMenu:
 		a.uiMenu(nil)
-	case scrModes:
-		a.uiModes(nil)
 	case scrSettings:
 		a.uiSettings(nil)
 	case scrHelp:
@@ -33,8 +28,7 @@ func (a *App) updateMenus() {
 }
 
 func (a *App) drawMenus(c *canvas) {
-	// the attract board, dim, behind every menu
-	if a.scr == scrMenu || a.scr == scrModes {
+	if a.scr == scrMenu {
 		// full width at the bottom, faint: a bed of sand under the menu
 		g := a.W / float64(a.attract.GW)
 		h := g * float64(a.attract.GH)
@@ -44,8 +38,6 @@ func (a *App) drawMenus(c *canvas) {
 	switch a.scr {
 	case scrMenu:
 		a.uiMenu(c)
-	case scrModes:
-		a.uiModes(c)
 	case scrSettings:
 		a.uiSettings(c)
 	case scrHelp:
@@ -60,8 +52,8 @@ func (a *App) drawMenus(c *canvas) {
 func (a *App) back() {
 	switch a.scr {
 	case scrSettings:
-		if a.settingsRet == scrDrop || a.settingsRet == scrZest {
-			a.go_(a.settingsRet)
+		if a.settingsRet == scrDrop {
+			a.go_(scrDrop)
 			a.settingsRet = scrMenu
 			return
 		}
@@ -100,18 +92,17 @@ func (a *App) uiMenu(c *canvas) {
 		}
 		c.round(a.W/2-90, y-58, 180, 34, 17, cardBg, 0.85)
 		c.text("● "+name, a.W/2, y-41, 14, false, textCol, 1, 1)
+		if best := a.st.best(); best > 0 {
+			c.text("BEST "+grouped(best), a.W/2, y-84, 13, true, dimText, 1, 1)
+		}
 	} else if a.in.tapped(a.W/2-90, y-58, 180, 34) {
 		a.askName(scrMenu)
 	}
 	if a.button(c, "PLAY", x, y, w, 62, btnPrimary) {
-		a.go_(scrModes)
+		a.startDrop()
 	}
-	if a.button(c, "LEADERBOARD", x, y+76, w, 52, btnSecondary) {
+	if a.button(c, "SCORES", x, y+76, w, 52, btnSecondary) {
 		a.go_(scrBoard)
-		if a.remote != nil && a.worldState != worldLoading {
-			a.worldState = worldLoading
-			a.remote.fetch()
-		}
 	}
 	if a.button(c, "HOW TO PLAY", x, y+140, w, 52, btnSecondary) {
 		a.go_(scrHelp)
@@ -119,56 +110,6 @@ func (a *App) uiMenu(c *canvas) {
 	if a.button(c, "SETTINGS", x, y+204, w, 52, btnSecondary) {
 		a.settingsRet = scrMenu
 		a.go_(scrSettings)
-	}
-}
-
-// ── modes ────────────────────────────────────────────────────────────────
-
-func (a *App) uiModes(c *canvas) {
-	if a.header(c, "CHOOSE A MODE") {
-		a.back()
-		return
-	}
-	_, sy, sw, _ := a.safe()
-	w := min(sw-32, 420)
-	x := (a.W - w) / 2
-	y := sy + 84
-	type card struct {
-		title, line1, line2 string
-		col                 rgb
-		mode                Mode
-	}
-	cards := [3]card{
-		{"CLASSIC DROP", "The original Lemon Drop rules.", "World leaderboard.", fruit[1], ModeClassic},
-		{"FAIR DROP", "Same rules; pieces dealt with care.", "Help: " + a.st.data.Settings.FairProfile + " · local board.", fruit[2], ModeFair},
-		{"ZEST BLOCKS", "Drag three pieces, clear lines.", "Dealing: " + a.st.data.Settings.ZestProfile + " · local board.", fruit[3], ModeZest},
-	}
-	for i, cd := range cards {
-		cy := y + float64(i)*132
-		if c == nil {
-			if a.in.tapped(x, cy, w, 116) {
-				a.sfx(sfxTap, 0.6)
-				a.haptic(HapticLight)
-				if cd.mode == ModeZest {
-					a.startZest()
-				} else {
-					a.startDrop(cd.mode)
-				}
-				return
-			}
-			continue
-		}
-		press := a.in.pressing(x, cy, w, 116) != nil
-		k := 0.0
-		if press {
-			k = 3
-		}
-		c.card(x+k, cy+k, w-2*k, 116-2*k)
-		c.round(x+k+14, cy+k+18, 8, 80, 4, cd.col, 1)
-		c.text(cd.title, x+40, cy+32, 21, true, cd.col.lighten(0.2), 1, 0)
-		c.text(cd.line1, x+40, cy+62, 14.5, false, textCol, 1, 0)
-		c.text(cd.line2, x+40, cy+86, 13, false, dimText, 1, 0)
-		c.text("BEST "+grouped(a.st.best(cd.mode)), x+w-18, cy+32, 12.5, true, dimText, 1, 2)
 	}
 }
 
@@ -184,7 +125,7 @@ func (a *App) uiSettings(c *canvas) {
 	_, sy, sw, sh := a.safe()
 	w := min(sw-24, 460)
 	x := (a.W - w) / 2
-	const content = 672.0
+	const content = 466.0
 	view := sh - 84
 	a.scrollSettings(view, content)
 	y := sy + 74 - a.setScroll
@@ -213,7 +154,7 @@ func (a *App) uiSettings(c *canvas) {
 	if s.Buttons {
 		ctl = 1
 	}
-	if v := a.segmented(c, "Falling-mode controls", x, y+252, w, []string{"Gestures", "Buttons"}, ctl); c == nil && v != ctl {
+	if v := a.segmented(c, "Controls", x, y+252, w, []string{"Gestures", "Buttons"}, ctl); c == nil && v != ctl {
 		s.Buttons, changed = v == 1, true
 	}
 	hand := 0
@@ -223,117 +164,66 @@ func (a *App) uiSettings(c *canvas) {
 	if v := a.segmented(c, "Button layout", x, y+330, w, []string{"Right hand", "Left hand"}, hand); c == nil && v != hand {
 		s.LeftHanded, changed = v == 1, true
 	}
-	fair := []string{gen.Relaxed.Name, gen.Balanced.Name}
-	fi := index(fair, s.FairProfile)
-	if v := a.segmented(c, "Fair Drop help", x, y+408, w, fair, fi); c == nil && v != fi {
-		s.FairProfile, changed = fair[v], true
-	}
-	zest := []string{gen.ZestRelaxed.Name, gen.ZestStandard.Name, gen.ZestChallenge.Name}
-	zi := index(zest, s.ZestProfile)
-	if v := a.segmented(c, "Zest Blocks dealing", x, y+486, w, zest, zi); c == nil && v != zi {
-		s.ZestProfile, changed = zest[v], true
-	}
-	setB(&s.Online, a.toggle(c, "World leaderboard (Classic)", x, y+564, w, s.Online))
 	name := a.st.data.Name
 	if name == "" {
 		name = "not set"
 	}
 	if c != nil {
-		c.text("Player name", x+16, y+636, 17, false, textCol, 1, 0)
-		c.text(name+"  ›", x+w-16, y+636, 16, true, accent, 1, 2)
-	} else if a.in.tapped(x, y+612, w, 50) {
+		c.text("Player name", x+16, y+430, 17, false, textCol, 1, 0)
+		c.text(name+"  ›", x+w-16, y+430, 16, true, accent, 1, 2)
+	} else if a.in.tapped(x, y+406, w, 50) {
 		a.askName(scrSettings)
 	}
 	if changed {
 		a.fx.reduce = s.ReduceMove
 		a.applyVolumes()
-		if s.Online && a.remote == nil {
-			url := a.opt.BoardURL
-			if url == "" {
-				url = defaultBoard
-			}
-			a.remote = newRemote(url)
-		} else if !s.Online {
-			a.remote = nil
-		}
 		a.st.save()
 	}
 }
 
-func index(opts []string, v string) int {
-	for i, o := range opts {
-		if o == v {
-			return i
+// scrollSettings drags the settings list when it is taller than the view.
+func (a *App) scrollSettings(view, content float64) {
+	maxOff := max(0, content-view+10)
+	for i := range a.in.ptrs {
+		p := &a.in.ptrs[i]
+		if p.active && !p.up && abs(p.dy()) > 12 && abs(p.dy()) > abs(p.dx()) && maxOff > 0 {
+			a.setScroll -= p.y - p.py
+			p.consumed = true
 		}
 	}
-	return 0
+	a.setScroll = max(0, min(maxOff, a.setScroll))
 }
 
 // ── how to play ──────────────────────────────────────────────────────────
 
-var helpPages = [3]struct{ title, body string }{
-	{"FALLING SAND", `Pieces fall like in any falling-block game, but when one lands it
-crumbles into sand of its colour and runs down the pile.
+const helpText = `Pieces fall like in any falling-block game, but when one lands it crumbles into sand of its colour and runs down the pile.
 
-A run of ONE colour that reaches from the left wall to the right wall
-flashes and clears. Grains touching at a corner still connect.
+A run of ONE colour that reaches from the left wall to the right wall flashes and clears. Grains touching at a corner still connect.
 
-Whatever rested on it falls — and may make another clear: a CHAIN.
+Whatever rested on it falls — and may make another clear: a CHAIN. Chains multiply your points.
 
-Gestures: drag sideways to steer · tap the left/right half to turn ·
-flick down to drop · drag down and hold to fall faster.
+Gestures: drag sideways to steer · tap the left or right half to turn · flick down to drop · drag down and hold to fall faster.
 
-Score: base × level × chain. Base is the cleared grains, ten points a
-block's worth. Level rises every four clears. Dropping a piece scores
-2 a row. Classic uses the terminal game's exact rules.`},
-	{"FAIR DROP", `Same rules as Classic. The difference is how pieces are dealt.
-
-Every seven pieces still contain each shape exactly once. When the
-stack gets high, Fair Drop picks which of the remaining shapes comes
-next, and its colour, by looking at where it could land:
-widening a band of its colour, keeping the stack low.
-
-Relaxed helps often; Balanced helps less. Nothing is ever dealt to
-make you lose. Fair Drop scores go on their own local board.`},
-	{"ZEST BLOCKS", `Drag the three pieces onto the 8×8 board. Full rows and columns
-clear — both at once when a piece completes both.
-
-Placing: 1 point a cell.
-Clearing L lines at once: 80 × L × (L + Z) × combo,
-where Z counts ZEST LINES — lines all of one colour.
-Emptying the board: +300.
-
-COMBO grows with every placement that clears. Three placements in a
-row without a clear end it.
-
-The run ends when no piece left in the tray fits anywhere.
-Relaxed and Standard dealing only give trays that can be placed
-completely; Challenge does not promise that.`},
-}
+Score: base × level × chain. Base is the cleared grains, ten points a block's worth. The level rises every four clears and pieces fall faster. Dropping a piece scores 2 a row.`
 
 func (a *App) uiHelp(c *canvas) {
 	if a.header(c, "HOW TO PLAY") {
 		a.back()
 		return
 	}
-	_, sy, sw, sh := a.safe()
-	w := min(sw-24, 520)
-	x := (a.W - w) / 2
-	tabs := []string{"Falling", "Fair Drop", "Zest"}
-	if v := a.segmented(c, "", x, sy+64, w, tabs, a.helpTab); c == nil {
-		a.helpTab = v
-	}
 	if c == nil {
 		return
 	}
-	y := sy + 160
-	c.card(x, y, w, min(sh-180, 560))
-	p := helpPages[a.helpTab]
-	c.text(p.title, x+20, y+28, 18, true, accent, 1, 0)
+	_, sy, sw, sh := a.safe()
+	w := min(sw-24, 520)
+	x := (a.W - w) / 2
+	y := sy + 74
+	c.card(x, y, w, min(sh-90, 600))
+	c.text("FALLING SAND", x+20, y+28, 18, true, accent, 1, 0)
 	const size = 14.5
 	ly := y + 62
-	for _, para := range strings.Split(strings.ReplaceAll(p.body, "\n\n", "\x00"), "\x00") {
-		for _, line := range wrap(strings.ReplaceAll(para, "\n", " "), w-40, size, c.s) {
+	for _, para := range strings.Split(helpText, "\n\n") {
+		for _, line := range wrap(para, w-40, size, c.s) {
 			c.text(line, x+20, ly, size, false, textCol, 1, 0)
 			ly += size * 1.45
 		}
@@ -363,53 +253,34 @@ func wrap(s string, w, size float64, scale float32) []string {
 	return out
 }
 
-// ── leaderboard ──────────────────────────────────────────────────────────
+// ── scores (this device) ─────────────────────────────────────────────────
 
 func (a *App) uiBoard(c *canvas) {
-	if a.header(c, "LEADERBOARD") {
+	if a.header(c, "SCORES") {
 		a.back()
+		return
+	}
+	if c == nil {
 		return
 	}
 	_, sy, sw, sh := a.safe()
 	w := min(sw-24, 520)
 	x := (a.W - w) / 2
-	modes := []Mode{ModeClassic, ModeFair, ModeZest}
-	cur := 0
-	for i, m := range modes {
-		if m == a.boardTab {
-			cur = i
-		}
-	}
-	if v := a.segmented(c, "", x, sy+64, w, []string{"Classic", "Fair Drop", "Zest"}, cur); c == nil {
-		a.boardTab = modes[v]
-		return
-	}
-	y := sy + 160
-	h := min(sh-180, 640)
+	y := sy + 74
+	h := min(sh-90, 680)
 	c.card(x, y, w, h)
-	rows, status := a.st.data.Boards[a.boardTab], "on this device"
-	if a.boardTab == ModeClassic {
-		switch a.worldState {
-		case worldOK:
-			rows, status = a.world, "world"
-		case worldLoading:
-			status = "connecting… showing this device"
-		case worldOffline:
-			status = "offline — showing this device"
-		}
-	}
-	c.text(strings.ToUpper(status), x+w/2, y+24, 11.5, true, dimText, 1, 1)
+	rows := a.st.board()
 	if len(rows) == 0 {
-		c.text("No runs yet — be the first.", x+w/2, y+h/2, 16, false, dimText, 1, 1)
+		c.text("No runs yet — play one!", x+w/2, y+h/2, 16, false, dimText, 1, 1)
 		return
 	}
-	rh := min(28.0, (h-60)/float64(boardSize))
+	rh := min(30.0, (h-40)/float64(boardSize))
 	me := a.st.data.Name
 	for i, e := range rows {
 		if i >= boardSize {
 			break
 		}
-		ry := y + 52 + float64(i)*rh
+		ry := y + 30 + float64(i)*rh
 		col := textCol
 		if e.Name == me && me != "" {
 			c.round(x+10, ry-rh/2+2, w-20, rh-4, 8, accent2, 0.18)
@@ -424,7 +295,7 @@ func (a *App) uiBoard(c *canvas) {
 // ── name entry (desktop fallback; phones use a native prompt) ────────────
 
 func (a *App) askName(ret screen) {
-	if a.plat.RequestText("Your name for the leaderboard", a.st.data.Name) {
+	if a.plat.RequestText("Your name for the scores", a.st.data.Name) {
 		return
 	}
 	a.typing, a.nameRet = a.st.data.Name, ret
@@ -434,7 +305,7 @@ func (a *App) askName(ret screen) {
 var chars []rune
 
 func (a *App) uiName(c *canvas) {
-	sx, sy, sw, _ := a.safe()
+	_, sy, sw, _ := a.safe()
 	if c == nil {
 		chars = ebiten.AppendInputChars(chars[:0])
 		for _, r := range chars {
@@ -466,18 +337,15 @@ func (a *App) uiName(c *canvas) {
 	c.text("letters, digits, space - _ .  (12 max)", a.W/2, sy+234, 13, false, dimText, 1, 1)
 	a.button(c, "SAVE", (a.W-200)/2, sy+260, 200, 54, btnPrimary)
 	a.button(c, "CANCEL", (a.W-200)/2, sy+326, 200, 46, btnGhost)
-	_ = sx
 }
 
 // ── results ──────────────────────────────────────────────────────────────
 
 type result struct {
-	mode          Mode
 	score, best   int
 	clears, level int
 	secs, rank    int
 	newBest       bool
-	submitted     bool
 	t             float64
 	shown         counter
 }
@@ -485,39 +353,15 @@ type result struct {
 func (a *App) finishDrop(d *dropPlay) {
 	s := d.sim
 	secs := max(1, int(s.Now))
-	prevBest := a.st.best(d.mode)
+	prevBest := a.st.best()
 	name := a.st.data.Name
 	if name == "" {
 		name = "?"
 	}
-	rank := a.st.add(d.mode, entry{Name: name, Score: s.Score, Clears: s.Clears, Level: s.Level, Secs: secs, At: nowUnix()})
+	rank := a.st.add(entry{Name: name, Score: s.Score, Clears: s.Clears, Level: s.Level, Secs: secs, At: nowUnix()})
 	a.st.save()
-	a.res = result{mode: d.mode, score: s.Score, best: max(prevBest, s.Score), clears: s.Clears, level: s.Level, secs: secs, rank: rank, newBest: s.Score > prevBest && s.Score > 0}
-	// Only Classic shares the server's rules (see docs/ARCHITECTURE.md §3.8).
-	if d.mode == ModeClassic && a.remote != nil && a.st.data.Name != "" && s.NLog <= core.MaxLog && s.Pieces > 0 {
-		a.worldRank = -1
-		a.remote.submit(remoteRun{Name: a.st.data.Name, Secs: secs, Pieces: s.Pieces, Drops: s.DropPts,
-			Clears: append([][2]int32{}, s.ClearLog[:s.NLog]...)})
-		a.res.submitted = true
-	}
-	a.enterOver()
-}
-
-func (a *App) finishZest(z *zestPlay) {
-	g := z.g
-	secs := max(1, int(a.t-z.start))
-	prevBest := a.st.best(ModeZest)
-	name := a.st.data.Name
-	if name == "" {
-		name = "?"
-	}
-	rank := a.st.add(ModeZest, entry{Name: name, Score: g.Score, Clears: g.Lines, Level: g.Placed, Secs: secs, At: nowUnix()})
-	a.st.save()
-	a.res = result{mode: ModeZest, score: g.Score, best: max(prevBest, g.Score), clears: g.Lines, level: g.Placed, secs: secs, rank: rank, newBest: g.Score > prevBest && g.Score > 0}
-	a.enterOver()
-}
-
-func (a *App) enterOver() {
+	a.res = result{score: s.Score, best: max(prevBest, s.Score), clears: s.Clears, level: s.Level, secs: secs,
+		rank: rank, newBest: s.Score > prevBest && s.Score > 0}
 	a.res.shown.snap(0)
 	a.res.shown.set(a.res.score)
 	a.go_(scrOver)
@@ -550,55 +394,28 @@ func (a *App) uiOver(c *canvas) {
 	if c != nil {
 		k := easeOutCubic(r.t / 0.45)
 		yy := y + (1-k)*60
-		c.card(x, yy, w, 430)
-		title := map[Mode]string{ModeClassic: "CLASSIC DROP", ModeFair: "FAIR DROP", ModeZest: "ZEST BLOCKS"}[r.mode]
-		c.text(title, x+w/2, yy+34, 15, true, dimText, float32(k), 1)
+		c.card(x, yy, w, 280)
+		c.text("GAME OVER", x+w/2, yy+34, 15, true, dimText, float32(k), 1)
 		c.text(grouped(r.shown.value()), x+w/2, yy+90, 48, true, textCol, float32(k), 1)
 		if r.newBest {
 			c.textScaled("NEW BEST!", x+w/2, yy+140, 22, easeOutBack((r.t-0.5)/0.4), accent, float32(clamp01((r.t-0.5)/0.2)))
 		} else {
 			c.text("BEST "+grouped(r.best), x+w/2, yy+140, 15, false, dimText, float32(k), 1)
 		}
-		l1, l2 := "CLEARS", "LEVEL"
-		if r.mode == ModeZest {
-			l1, l2 = "LINES", "PIECES"
-		}
-		stats := [4][2]string{{l1, itoa(r.clears)}, {l2, itoa(r.level)}, {"TIME", itoa(r.secs/60) + ":" + pad2(r.secs%60)}, {"RANK", rankText(r.rank)}}
+		stats := [4][2]string{{"CLEARS", itoa(r.clears)}, {"LEVEL", itoa(r.level)}, {"TIME", itoa(r.secs/60) + ":" + pad2(r.secs%60)}, {"RANK", rankText(r.rank)}}
 		for i, s := range stats {
 			sx := x + w*(float64(i)+0.5)/4
-			c.text(s[0], sx, yy+188, 11.5, true, dimText, float32(k), 1)
-			c.text(s[1], sx, yy+214, 19, true, textCol, float32(k), 1)
-		}
-		if r.mode == ModeClassic {
-			msg := "World board: set a name to take part"
-			switch {
-			case !r.submitted && a.remote == nil:
-				msg = "World board: off"
-			case r.submitted && a.worldRank == -1:
-				msg = "World board: sending…"
-			case r.submitted && a.worldRank > 0:
-				msg = "World rank #" + itoa(a.worldRank)
-			case r.submitted && a.worldState == worldOffline:
-				msg = "World board: offline — kept on this device"
-			case r.submitted:
-				msg = "World board: not in the top " + itoa(boardSize)
-			}
-			c.text(msg, x+w/2, yy+252, 13, false, dimText, float32(k), 1)
-		} else {
-			c.text("Local board — rules differ from Classic", x+w/2, yy+252, 13, false, dimText, float32(k), 1)
+			c.text(s[0], sx, yy+198, 11.5, true, dimText, float32(k), 1)
+			c.text(s[1], sx, yy+224, 19, true, textCol, float32(k), 1)
 		}
 	}
 	if r.t < 0.5 && c == nil {
 		return
 	}
-	if a.button(c, "PLAY AGAIN", x+24, y+290, w-48, 58, btnPrimary) {
-		if r.mode == ModeZest {
-			a.startZest()
-		} else {
-			a.startDrop(r.mode)
-		}
+	if a.button(c, "PLAY AGAIN", x+24, y+300, w-48, 58, btnPrimary) {
+		a.startDrop()
 	}
-	if a.button(c, "MENU", x+24, y+360, w-48, 50, btnSecondary) {
+	if a.button(c, "MENU", x+24, y+370, w-48, 50, btnSecondary) {
 		a.go_(scrMenu)
 	}
 }
@@ -615,17 +432,4 @@ func rankText(r int) string {
 		return "–"
 	}
 	return "#" + itoa(r)
-}
-
-// scrollSettings drags the settings list when it is taller than the view.
-func (a *App) scrollSettings(view, content float64) {
-	maxOff := max(0, content-view+10)
-	for i := range a.in.ptrs {
-		p := &a.in.ptrs[i]
-		if p.active && !p.up && abs(p.dy()) > 12 && abs(p.dy()) > abs(p.dx()) && maxOff > 0 {
-			a.setScroll -= p.y - p.py
-			p.consumed = true
-		}
-	}
-	a.setScroll = max(0, min(maxOff, a.setScroll))
 }

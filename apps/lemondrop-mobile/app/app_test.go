@@ -2,13 +2,9 @@ package app
 
 import (
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/thebanri/limoni/apps/lemondrop-mobile/core"
 )
@@ -20,11 +16,11 @@ func TestSaveRoundTripAndVersion(t *testing.T) {
 	s := newStore(dir)
 	s.data.Name = "Ayşe"
 	s.data.Settings.Buttons = true
-	s.add(ModeZest, entry{Name: "Ayşe", Score: 900})
+	s.add(entry{Name: "Ayşe", Score: 900})
 	s.save()
 
 	r := newStore(dir)
-	if r.data.Name != "Ayşe" || !r.data.Settings.Buttons || r.best(ModeZest) != 900 {
+	if r.data.Name != "Ayşe" || !r.data.Settings.Buttons || r.best() != 900 {
 		t.Fatalf("reloaded %+v", r.data)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "lemondrop-mobile.json"))
@@ -44,28 +40,28 @@ func TestLegacyTerminalSaveIsImportedOnce(t *testing.T) {
 	legacy := `{"name":"  Lemon!Fan ","board":[{"name":"Lemon!Fan","score":2312,"clears":6,"level":2,"secs":90}]}`
 	os.WriteFile(filepath.Join(dir, "lemondrop.json"), []byte(legacy), 0o644)
 	s := newStore(dir)
-	if s.data.Name != "LemonFan" || s.best(ModeClassic) != 2312 {
-		t.Fatalf("legacy import: name %q best %d", s.data.Name, s.best(ModeClassic))
+	if s.data.Name != "LemonFan" || s.best() != 2312 {
+		t.Fatalf("legacy import: name %q best %d", s.data.Name, s.best())
 	}
 	s2 := newStore(dir) // second start: not imported again
-	if n := len(s2.data.Boards[ModeClassic]); n != 1 {
-		t.Fatalf("classic board has %d entries after a second start", n)
+	if n := len(s2.board()); n != 1 {
+		t.Fatalf("the board has %d entries after a second start", n)
 	}
 }
 
 func TestBoardsRankAndKeepTwenty(t *testing.T) {
 	s := newStore("")
 	for i := 0; i < 30; i++ {
-		s.add(ModeFair, entry{Name: "p", Score: i * 10})
+		s.add(entry{Name: "p", Score: i * 10})
 	}
-	b := s.data.Boards[ModeFair]
+	b := s.board()
 	if len(b) != boardSize || b[0].Score != 290 || b[boardSize-1].Score != 100 {
 		t.Fatalf("board %d long, top %d, last %d", len(b), b[0].Score, b[len(b)-1].Score)
 	}
-	if r := s.add(ModeFair, entry{Name: "low", Score: 5}); r != 0 {
+	if r := s.add(entry{Name: "low", Score: 5}); r != 0 {
 		t.Fatalf("a score below the board ranked %d", r)
 	}
-	if r := s.add(ModeFair, entry{Name: "top", Score: 1000}); r != 1 {
+	if r := s.add(entry{Name: "top", Score: 1000}); r != 1 {
 		t.Fatalf("a new best ranked %d", r)
 	}
 }
@@ -79,7 +75,7 @@ func testDrop(t *testing.T) (*App, *dropPlay) {
 	a.st = newStore("")
 	a.st.data.Settings.Haptics = false
 	a.st.data.Settings.Muted = true
-	d := &dropPlay{a: a, mode: ModeClassic}
+	d := &dropPlay{a: a}
 	d.sim = core.NewSim(1, core.MaxB)
 	d.sim.Start()
 	d.layout()
@@ -191,41 +187,20 @@ func TestBoardFitsTheSafeAreaOnManyPhones(t *testing.T) {
 	}
 }
 
-// ── leaderboard policy ───────────────────────────────────────────────────
+// ── results ──────────────────────────────────────────────────────────────
 
-func TestOnlyClassicRunsGoToTheWorldBoard(t *testing.T) {
-	posts := make(chan string, 4)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			b, _ := io.ReadAll(r.Body)
-			posts <- string(b)
-		}
-		w.Write([]byte(`{"rank":3,"board":[]}`))
-	}))
-	defer srv.Close()
-
-	for _, m := range []Mode{ModeFair, ModeClassic} {
-		a, d := testDrop(t)
-		a.remote = newRemote(srv.URL)
-		a.st.data.Name = "tester"
-		d.mode = m
-		for d.sim.Phase == core.Playing {
-			d.sim.HardDrop()
-		}
-		a.finishDrop(d)
+func TestAFinishedRunGoesOnTheBoard(t *testing.T) {
+	a, d := testDrop(t)
+	a.st.data.Name = "tester"
+	a.st.add(entry{Name: "old", Score: 1})
+	for d.sim.Phase == core.Playing {
+		d.sim.HardDrop()
 	}
-	select {
-	case body := <-posts:
-		var run remoteRun
-		if json.Unmarshal([]byte(body), &run) != nil || run.Name != "tester" || run.Pieces == 0 {
-			t.Fatalf("bad submission %s", body)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the classic run was not submitted")
+	a.finishDrop(d)
+	if a.res.rank != 1 || a.st.best() != d.sim.Score || a.st.board()[0].Name != "tester" {
+		t.Fatalf("rank %d, best %d, top %+v; run scored %d", a.res.rank, a.st.best(), a.st.board()[0], d.sim.Score)
 	}
-	select {
-	case body := <-posts:
-		t.Fatalf("a second (non-classic) run was submitted: %s", body)
-	case <-time.After(300 * time.Millisecond):
+	if a.scr != scrOver {
+		t.Fatal("the results screen did not open")
 	}
 }

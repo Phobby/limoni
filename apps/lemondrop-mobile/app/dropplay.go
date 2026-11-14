@@ -7,12 +7,11 @@ import (
 	"github.com/thebanri/limoni/apps/lemondrop-mobile/gen"
 )
 
-// dropPlay is the falling-sand mode (Classic or Fair Drop).
+// dropPlay is a run of the game.
 type dropPlay struct {
-	a    *App
-	mode Mode
-	sim  *core.Sim
-	tex  *sandTex
+	a   *App
+	sim *core.Sim
+	tex *sandTex
 
 	// layout, dp
 	bx, by, bw, bh, g float64
@@ -43,16 +42,10 @@ type dropPlay struct {
 	bannerT float64
 }
 
-func (a *App) startDrop(m Mode) {
-	d := &dropPlay{a: a, mode: m, tex: newSandTex()}
+func (a *App) startDrop() {
+	d := &dropPlay{a: a, tex: newSandTex()}
 	d.sim = core.NewSim(a.nextSeed(), core.MaxB)
-	if m == ModeFair {
-		p := gen.Relaxed
-		if a.st.data.Settings.FairProfile == gen.Balanced.Name {
-			p = gen.Balanced
-		}
-		d.sim.Gen = &gen.FairDrop{P: p}
-	}
+	d.sim.Gen = &gen.Director{}
 	d.sim.Start()
 	d.start = a.t
 	a.drop = d
@@ -434,7 +427,7 @@ func (d *dropPlay) drawHUD(c *canvas) {
 	// score
 	c.text("SCORE", sx+20, y+8, 12, true, dimText, 1, 0)
 	c.text(grouped(d.score.value()), sx+20, y+34, 30, true, textCol, 1, 0)
-	best := max(a.st.best(d.mode), s.Score)
+	best := max(a.st.best(), s.Score)
 	c.text("BEST "+grouped(best), sx+20, y+62, 12.5, false, dimText, 1, 0)
 	// level & chain
 	mid := sx + sw*0.52
@@ -443,11 +436,7 @@ func (d *dropPlay) drawHUD(c *canvas) {
 	if s.Combo > 1 {
 		c.text("CHAIN ×"+itoa(s.Combo), mid, y+62, 13, true, accent2, 1, 1)
 	} else {
-		label := "CLASSIC"
-		if d.mode == ModeFair {
-			label = "FAIR DROP · " + a.st.data.Settings.FairProfile
-		}
-		c.text(label, mid, y+62, 11.5, false, dimText, 1, 1)
+		c.text(itoa(s.Clears)+" CLEARS", mid, y+62, 11.5, false, dimText, 1, 1)
 	}
 	// next
 	nx := sx + sw - 128
@@ -514,7 +503,7 @@ func (d *dropPlay) updatePause() {
 	case a.button(nil, "RESUME", x+24, y+66, w-48, 54, btnPrimary) || a.keys.just(ebiten.KeyP) || a.keys.just(ebiten.KeyEscape):
 		a.paused = false
 	case a.button(nil, "RESTART", x+24, y+130, w-48, 50, btnSecondary):
-		a.startDrop(d.mode)
+		a.startDrop()
 	case a.button(nil, "SETTINGS", x+24, y+190, w-48, 50, btnSecondary):
 		a.settingsRet = scrDrop
 		a.go_(scrSettings)
